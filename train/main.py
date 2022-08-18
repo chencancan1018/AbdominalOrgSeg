@@ -9,10 +9,8 @@ from collections import OrderedDict
 
 import torch
 import torch.optim as optim
-import torch.nn.functional as F
 import torch.distributed as dist
 from torch.cuda.amp import autocast
-import torch.backends.cudnn as cudnn
 from collect_env import get_pretty_env_info
 
 from data.match import dataset_match

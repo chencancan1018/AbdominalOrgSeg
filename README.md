@@ -1,7 +1,7 @@
 # AbdominalOrgSeg
 ## Introduction
 - AbdominalOrgSeg is an open source, PyTorch-based segmentation method for 3D medical image. 
-- The full code and paper will be updated.
+- The whole code and paper will be updated.
 
 
 ## Installation

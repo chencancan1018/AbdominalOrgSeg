@@ -12,14 +12,15 @@ num_workers=4
 
 # Paras for Dataset
 import numpy as np
-win_level = [100, 100]
-win_width = [400, 250]
+dataset="LagSegDataset"
+win_level = [50, 50]
+win_width = [400, 200]
 in_ch = len(win_level)
-patch_size = [128, 128, 128]
-dataset="EsoSegDataset"
+patch_size = [64, 224, 224]
+threshold = 0.96
 train=dict(
-    dst_list_file='./checkpoints/predata/train.lst',
-    data_root='./checkpoints/predata',
+    dst_list_file='./checkpoints/predata/train/train.lst',
+    data_root='./checkpoints/predata/train',
     patch_size=patch_size,
     sample_frequent=12,
     win_level=win_level,
@@ -47,8 +48,8 @@ train=dict(
     }
 ),
 val=dict(
-    dst_list_file='./checkpoints/predata/val.lst',
-    data_root='./checkpoints/predata',
+    dst_list_file='./checkpoints/predata/val/val.lst',
+    data_root='./checkpoints/predata/val',
     patch_size=patch_size,
     sample_frequent=1,
     win_level=win_level,
@@ -59,12 +60,12 @@ val=dict(
 # Model
 model=dict(
     in_ch=in_ch, 
-    channels=16, 
+    channels=32, 
     blocks=3, 
-    use_aspp=True, 
-    is_aux=False,
-    head_type="soft",
-    classes=3,
+    use_aspp=False, 
+    is_aux=True,
+    head_type="sig",
+    classes=1,
     apply_sync_batchnorm=True,
 )
 
@@ -76,13 +77,13 @@ lr_config=dict(step=[30, 60], gamma=0.2)
 # Log
 is_logger=True
 
-# Mixed Precision
+# Mixed Precsion
 fp16=False
 
 # Validation
-validate=True
+validate=False
 
 # Pretrain
 load_from=None
-save_dir='./checkpoints/results/resunet_eso'
+save_dir='./checkpoints/results/resunet_lag'
 

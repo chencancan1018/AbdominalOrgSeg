@@ -141,51 +141,48 @@ class ResUnet(nn.Module):
     def __init__(self, in_ch, channels=16, blocks=3, use_aspp=False, is_aux=False):
         super(ResUnet, self).__init__()
 
-        self.in_conv = DoubleConv(in_ch, channels, stride=1, kernel_size=3)
-        self.layer0 = make_res_layer(channels, channels * 2, blocks, stride=2)
-        self.layer1 = make_res_layer(channels * 2, channels * 4, blocks, stride=2)
-        self.layer2 = make_res_layer(channels * 4, channels * 8, blocks, stride=2)
-        self.layer3 = make_res_layer(channels * 8, channels * 16, blocks, stride=2)
+        self.in_conv = DoubleConv(in_ch, channels, stride=2, kernel_size=3)
+        self.layer1 = make_res_layer(channels, channels * 2, blocks, stride=2)
+        self.layer2 = make_res_layer(channels * 2, channels * 4, blocks, stride=2)
+        self.layer3 = make_res_layer(channels * 4, channels * 8, blocks, stride=2)
 
         self.up5 = nn.Upsample(scale_factor=2, mode='trilinear', align_corners=False)
-        self.conv5 = DoubleConv(channels * 24, channels * 8)
+        self.conv5 = DoubleConv(channels * 12, channels * 4)
         self.up6 = nn.Upsample(scale_factor=2, mode='trilinear', align_corners=False)
-        self.conv6 = DoubleConv(channels * 12, channels * 4)
+        self.conv6 = DoubleConv(channels * 6, channels * 2)
         self.up7 = nn.Upsample(scale_factor=2, mode='trilinear', align_corners=False)
-        self.conv7 = DoubleConv(channels * 6, channels * 2)
+        self.conv7 = DoubleConv(channels * 3, channels)
         self.up8 = nn.Upsample(scale_factor=2, mode='trilinear', align_corners=False)
-        self.conv8 = DoubleConv(channels * 3, channels * 1)
 
         self.aspp = ASPP(channels * 16, channels * 16)
         self.is_aux = is_aux
         self.use_aspp = use_aspp
 
     def forward(self, input):
-        c0 = self.in_conv(input) 
-        c1 = self.layer0(c0) 
-        c2 = self.layer1(c1) 
-        c3 = self.layer2(c2) 
-        c4 = self.layer3(c3) 
+        c1 = self.in_conv(input)
+        c2 = self.layer1(c1)
+        c3 = self.layer2(c2)
+        c4 = self.layer3(c3)
 
         if self.use_aspp:
             c4_ap = self.aspp(c4) 
+        else:
+            c4_ap = c4
 
-        up_5 = self.up5(c4_ap)
+        up_5 = self.up5(c4)
         merge5 = torch.cat([up_5, c3], dim=1)
-        c5 = self.conv5(merge5) 
+        c5 = self.conv5(merge5)
         up_6 = self.up6(c5)
         merge6 = torch.cat([up_6, c2], dim=1)
-        c6 = self.conv6(merge6) 
-        up_7 = self.up7(c6) 
+        c6 = self.conv6(merge6)
+        up_7 = self.up7(c6)
         merge7 = torch.cat([up_7, c1], dim=1)
-        c7 = self.conv7(merge7) 
-        up_8 = self.up8(c7) 
-        merge8 = torch.cat([up_8, c0], dim=1)
-        c8 = self.conv8(merge8)
+        c7 = self.conv7(merge7)
+        up_8 = self.up8(c7)
         if self.is_aux:
-            return [c8, c7, c6, c5]
+            return [up_8, c7, c6, c5]
         else:
-            return c8
+            return up_8
 
 
 if __name__ == '__main__':

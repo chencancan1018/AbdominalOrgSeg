@@ -1,7 +1,6 @@
 
 # Distributed
 gpus=4
-total_epoch=90
 distributed=True
 deterministic = False
 
@@ -18,8 +17,8 @@ in_ch = len(win_level)
 patch_size = [128, 128, 128]
 dataset="LGSegDataset"
 train=dict(
-    dst_list_file='./checkpoints/predata/train.lst',
-    data_root='./checkpoints/predata',
+    dst_list_file='./checkpoints/predata/train/train.lst',
+    data_root='./checkpoints/predata/train',
     patch_size=patch_size,
     sample_frequent=12,
     win_level=win_level,
@@ -47,8 +46,8 @@ train=dict(
     }
 ),
 val=dict(
-    dst_list_file='./checkpoints/predata/val.lst',
-    data_root='./checkpoints/predata',
+    dst_list_file='./checkpoints/predata/val/val.lst',
+    data_root='./checkpoints/predata/val',
     patch_size=patch_size,
     sample_frequent=1,
     win_level=win_level,
@@ -59,16 +58,19 @@ val=dict(
 # Model
 model=dict(
     in_ch=in_ch, 
-    channels=16, 
+    channels=32, 
     blocks=3, 
-    use_aspp=True, 
-    is_aux=False,
+    use_aspp=False, 
+    is_aux=True,
     head_type="soft",
+    patch_size=patch_size,
     classes=3,
     apply_sync_batchnorm=True,
 )
 
+
 # Optimizer and LR
+total_epoch=90
 optimizer = dict(lr=1e-4, weight_decay=1e-5)
 optimizer_config={}
 lr_config=dict(step=[30, 60], gamma=0.2)
@@ -80,9 +82,9 @@ is_logger=True
 fp16=False
 
 # Validation
-validate=True
+validate=False
 
 # Pretrain
-load_from=None
+load_from='./checkpoints/results/resunet_lg/epoch_40.pth'
 save_dir='./checkpoints/results/resunet_lg'
 

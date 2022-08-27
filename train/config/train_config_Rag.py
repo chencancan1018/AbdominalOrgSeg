@@ -7,7 +7,7 @@ distributed=True
 deterministic = False
 
 # DataLoader
-batch_size=8
+batch_size=6
 shuffle=True
 num_workers=4
 
@@ -20,8 +20,8 @@ patch_size = [64, 256, 256]
 threshold=0.96
 import numpy as np
 train=dict(
-    dst_list_file='./checkpoints/predata/train.lst',
-    data_root='./checkpoints/predata',
+    dst_list_file='./checkpoints/predata/train/train.lst',
+    data_root='./checkpoints/predata/train',
     patch_size=patch_size,
     sample_frequent=12,
     win_level=win_level,
@@ -49,8 +49,8 @@ train=dict(
     }
 ),
 val=dict(
-    dst_list_file='./checkpoints/predata/val.lst',
-    data_root='./checkpoints/predata',
+    dst_list_file='./checkpoints/predata/val/val.lst',
+    data_root='./checkpoints/predata/val',
     patch_size=patch_size,
     sample_frequent=1,
     win_level=win_level,
@@ -61,10 +61,10 @@ val=dict(
 # Model
 model=dict(
     in_ch=in_ch, 
-    channels=16, 
+    channels=32, 
     blocks=3, 
-    use_aspp=True, 
-    is_aux=False,
+    use_aspp=False, 
+    is_aux=True,
     head_type="sig",
     classes=1,
     apply_sync_batchnorm=True,
@@ -82,9 +82,8 @@ is_logger=True
 fp16=False
 
 # Validation
-validate=True
+validate=False
 
 # Pretrain
 load_from=None
 save_dir='./checkpoints/results/resunet_rag'
-

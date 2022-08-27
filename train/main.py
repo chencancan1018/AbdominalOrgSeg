@@ -5,6 +5,7 @@ import shutil
 import argparse
 import numpy as np
 from mmcv import Config
+from mmcv.runner.checkpoint import load_checkpoint, load_state_dict
 from collections import OrderedDict
 
 import torch
@@ -26,14 +27,15 @@ class Trainner(object):
         
 
         if self.config.distributed:
-            rank = self.config.get("rank", None)
-            if rank is None:
-                rank = int(os.environ["RANK"]) if "RANK" in os.environ else -1
-                num_gpus = torch.cuda.device_count()
-                torch.cuda.set_device(rank % num_gpus)
-            dist.init_process_group(backend='nccl', rank=rank)
+
+            dist.init_process_group(backend='nccl')
+            # local_rank = torch.distributed.get_rank()
+            local_rank = config.local_rank
+            torch.cuda.set_device(local_rank)
+            device = torch.device('cuda', local_rank)
 
         self.model = self._get_model()
+        self.model = self.model.to(device)
 
         if self.config.deterministic:
             torch.backends.cudnn.deterministic = True
@@ -42,11 +44,26 @@ class Trainner(object):
         if self.config.is_logger:
             self.logger = get_logger(self.config.save_dir)
 
-        if self.config.distributed:
-            ngpus_per_node = torch.cuda.device_count()
-            
-            self.model.cuda() 
-            self.model = torch.nn.parallel.DistributedDataParallel(self.model, device_ids=[torch.cuda.current_device()])
+        self.base_lr = self.config.optimizer["lr"]
+        self.lr = self.base_lr
+        self.optimizer = optim.AdamW(
+            self.model.parameters(), 
+            lr=self.base_lr,
+            weight_decay=self.config.optimizer["weight_decay"],
+        )
+
+        self.start_epoch = 0
+        
+        if self.config.load_from is not None:
+            self._load_checkpoint(self.config.load_from)
+
+        if self.config.distributed:            
+            self.model = torch.nn.parallel.DistributedDataParallel(
+                self.model, 
+                device_ids=[local_rank], 
+                output_device=local_rank,
+                find_unused_parameters=True,
+            )
             self.batch_size = int(self.config.batch_size)
             self.num_workers = int(self.config.num_workers)
             if dist.get_rank():
@@ -64,20 +81,9 @@ class Trainner(object):
         else:
             raise NotImplementedError("Only DistributedDataParallel is supported.")
 
-        self.lr = self.config.optimizer["lr"]
-        self.optimizer = optim.AdamW(
-            self.model.parameters(), 
-            lr=self.lr,
-            weight_decay=self.config.optimizer["weight_decay"]
-        )
-        
-
-        self.start_epoch = 0
-        if self.config.load_from is not None:
-            self._load_checkpoint(self.config.load_from, gpu)
 
     def write_logger(self, information):
-        if dist.get_rank():
+        if not dist.get_rank():
             self.logger.info(information)
     
     def run(self):
@@ -138,7 +144,7 @@ class Trainner(object):
     
     def train(self, train_loader, epoch):
         self.model.train()
-        self.lr = self._get_lr(epoch, self.lr)
+        self.lr = self._get_lr(epoch, self.base_lr)
         for param_group in self.optimizer.param_groups:
             param_group["lr"] = self.lr
         for idx, data_batch in enumerate(train_loader):
@@ -159,6 +165,7 @@ class Trainner(object):
             self.write_logger(
                 "{} - Epoch: [{}][{}/{}], lr: {}, loss_pos: {:.5f}, loss_neg: {:.5f}, dice loss: {:.5f}".format(*info)
             )
+            # print("{} - Epoch: [{}][{}/{}], lr: {}, loss_pos: {:.5f}, loss_neg: {:.5f}, dice loss: {:.5f}".format(*info))
             loss.backward()
             self.optimizer.step()
 
@@ -183,6 +190,7 @@ class Trainner(object):
         self.write_logger(
                 "{} - Epoch: [{}], val loss: {:.5f}".format(datetime.datetime.today().strftime("%Y-%m-%d %H:%M:%S"), epoch, valloss)
             )
+        # print("{} - Epoch: [{}], val loss: {:.5f}".format(datetime.datetime.today().strftime("%Y-%m-%d %H:%M:%S"), epoch, valloss))
         return valloss
 
     def _parse_loss(self, losses):
@@ -208,9 +216,15 @@ class Trainner(object):
             is_aux = self.config.model["is_aux"],
         )
         if self.config.model["head_type"] == "sig":
-            head = SegSigHead(in_channels=self.config.model["channels"], classes=1)
+            head = SegSigHead(
+                in_channels=self.config.model["channels"],
+                patch_size=self.config.patch_size, is_aux=self.config.model["is_aux"],
+            )
         elif self.config.model["head_type"] == "soft":
-            head = SegSoftHead(in_channels=self.config.model["channels"], classes=self.config.model["classes"])
+            head = SegSoftHead(
+                in_channels=self.config.model["channels"], classes=self.config.model["classes"], 
+                patch_size=self.config.patch_size, is_aux=self.config.model["is_aux"],
+            )
         else:
             raise KeyError("wrong network head!")
         return SegNetwork(
@@ -233,32 +247,34 @@ class Trainner(object):
                 break
         return base_lr * gamma**exp
 
-    def _load_checkpoint(self, path, gpu):
+    def _load_checkpoint(self, path):
 
         print("Loading pre_trained model from: {}".format(path))
         self.write_logger("Loading pre_trained model from: {}".format(path))
-        if gpu is None:
-            checkpoint = torch.load(path)
+        checkpoint = torch.load(path, map_location=f"cpu")
+        # checkpoint = torch.load(path)
+        # self.start_epoch = checkpoint["epoch"]
+        if list(checkpoint["state_dict"].keys())[0].startswith("module."):
+            state_dict = {k[7:]: v for k, v in checkpoint["state_dict"].items()}
         else:
-            loc = "cuda:{}".format(gpu)
-            checkpoint = torch.load(path, map_location=loc)
-        self.start_epoch = checkpoint["epoch"]
-        self.model.load_state_dict(checkpoint["state_dict"])
-        self.optimizer.load_state_dict(checkpoint["optimizer"])
-        self.lr = checkpoint['lr']
-    
+            state_dict = checkpoint["state_dict"]
+        # self._load_state_dict(self.model, state_dict)
+        self.model.load_state_dict(state_dict)
+        self.optimizer.load_state_dict(checkpoint["optimizer_dict"])
+        # self.lr = checkpoint['lr']
+        
     def _save_checkpoint(self, path, epoch, is_best=False):
-
-        model_path = os.path.join(path, "epoch_{}.pth".format(str(epoch)))
-        checkpoint = {
-            "epoch": epoch,
-            "state_dict": self.model.state_dict(),
-            "optimizer_dict": self.optimizer.state_dict(),
-            "lr": self.lr
-        }
-        torch.save(checkpoint, model_path)
-        if is_best:
-            shutil.copyfile(model_path, os.path.join(path, "model_best.pth"))
+        if not dist.get_rank():
+            model_path = os.path.join(path, "epoch_{}.pth".format(str(epoch)))
+            checkpoint = {
+                "epoch": epoch,
+                "state_dict": self.model.state_dict(),
+                "optimizer_dict": self.optimizer.state_dict(),
+                "lr": self.lr
+            }
+            torch.save(checkpoint, model_path)
+            if is_best:
+                shutil.copyfile(model_path, os.path.join(path, "model_best.pth"))
 
 
 
@@ -271,5 +287,6 @@ if __name__ == "__main__":
     if 'LOCAL_RANK' not in os.environ:
         os.environ['LOCAL_RANK'] = str(args.local_rank)
     config = Config.fromfile(args.config)
+    config.local_rank = args.local_rank
     trainner = Trainner(config)
     trainner.run()

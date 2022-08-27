@@ -1,7 +1,6 @@
 
 # Distributed
 gpus=4
-total_epoch=90
 distributed=True
 deterministic = False
 
@@ -18,10 +17,10 @@ in_ch = len(win_level)
 patch_size = [128, 128, 128]
 dataset="CoarseSegDataset"
 train=dict(
-    dst_list_file='./checkpoints/predata/train.lst',
-    data_root='./checkpoints/predata',
+    dst_list_file='./checkpoints/predata/train/train.lst',
+    data_root='./checkpoints/predata/train',
     patch_size=patch_size,
-    sample_frequent=12,
+    sample_frequent=8,
     win_level=win_level,
     win_width=win_width,
     aug_paras={
@@ -34,8 +33,8 @@ train=dict(
         "rot_range_z": (-np.pi/9, np.pi/9),
         "rot_90": True,
         "flip": False,
-        "bright_bias": (-0.4, 0.4),
-        "bright_weight": (-0.4, 0.4),
+        "bright_bias": (-0.3, 0.3),
+        "bright_weight": (-0.3, 0.3),
         "translate_x": (-5.0, 5.0),
         "translate_y": (-5.0, 5.0),
         "translate_z": (-5.0, 5.0),
@@ -47,8 +46,8 @@ train=dict(
     }
 ),
 val=dict(
-    dst_list_file='./checkpoints/predata/val.lst',
-    data_root='./checkpoints/predata',
+    dst_list_file='./checkpoints/predata/val/val.lst',
+    data_root='./checkpoints/predata/val',
     patch_size=patch_size,
     sample_frequent=1,
     win_level=win_level,
@@ -59,11 +58,12 @@ val=dict(
 # Model
 model=dict(
     in_ch=in_ch, 
-    channels=16, 
+    channels=32, 
     blocks=3, 
-    use_aspp=True, 
-    is_aux=False,
+    use_aspp=False, 
+    is_aux=True,
     head_type="soft",
+    patch_size=patch_size,
     classes=14,
     apply_sync_batchnorm=True,
 )
@@ -71,7 +71,8 @@ model=dict(
 # Optimizer and LR
 optimizer = dict(lr=1e-4, weight_decay=1e-5)
 optimizer_config={}
-lr_config=dict(step=[30, 60], gamma=0.2)
+lr_config=dict(step=[20, 40], gamma=0.2)
+total_epoch=90
 
 # Log
 is_logger=True
@@ -80,9 +81,8 @@ is_logger=True
 fp16=False
 
 # Validation
-validate=True
+validate=False
 
 # Pretrain
-load_from=None
+load_from='./checkpoints/results/resunet_coarse/epoch_28.pth'
 save_dir='./checkpoints/results/resunet_coarse'
-
